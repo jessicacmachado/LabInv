@@ -74,7 +74,7 @@ def init_db():
     now = datetime.now().astimezone().isoformat(timespec="seconds")
     conn.execute("""UPDATE reagentes SET created_at=COALESCE(created_at, ?),
         updated_at=COALESCE(updated_at, ?), updated_by=COALESCE(updated_by, 'Registro anterior')""", (now, now))
-    # Adiciona reagentes iniciais ausentes sem alterar dados já cadastrados.
+    # Adiciona os reagentes iniciais ausentes sem alterar dados existentes.
     conn.executemany("""INSERT OR IGNORE INTO reagentes
         (nome,categoria,quantidade,unidade,local,validade,status,observacoes,created_at,updated_at,updated_by)
         VALUES (?,'Geral',2,'unidade','Estoque inicial','','Disponível',
@@ -123,7 +123,7 @@ def atualizar_reagente(reagente_id, dados, responsavel, acao="Edição"):
         return False
     old = dict(row)
     now = datetime.now().astimezone().isoformat(timespec="seconds")
-    fields = ["nome","categoria","quantidade","unidade","local","validade","status","observacoes"]
+    fields = ["nome", "categoria", "quantidade", "unidade", "local", "validade", "status", "observacoes"]
     conn.execute("""UPDATE reagentes SET nome=?,categoria=?,quantidade=?,unidade=?,local=?,validade=?,
         status=?,observacoes=?,updated_at=?,updated_by=? WHERE id=?""",
         tuple(dados[field] for field in fields) + (now, responsavel, reagente_id))
@@ -163,6 +163,46 @@ def dados_para_edicao(item, quantidade):
 
 
 st.set_page_config(page_title="LabInv", page_icon="🧪", layout="wide")
+
+# Tema visual neutro com utensílios de laboratório em traço translúcido no fundo.
+st.markdown("""
+<style>
+.stApp {
+  background-color: #efeee9;
+  background-image:
+    linear-gradient(rgba(245, 244, 239, 0.88), rgba(245, 244, 239, 0.88)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320' viewBox='0 0 320 320'%3E%3Cg fill='none' stroke='%237b8982' stroke-opacity='.22' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M70 42h46M82 42v72L48 190a18 18 0 0016 27h58a18 18 0 0016-27l-34-76V42'/%3E%3Cpath d='M63 174h70M86 147h20M222 44v56l-34 74a17 17 0 0015 24h48a17 17 0 0015-24l-34-74V44M211 44h22M197 158h60'/%3E%3Cpath d='M57 202h71M202 183h54M255 52v62M244 52h22M239 114h32'/%3E%3Ccircle cx='265' cy='244' r='25'/%3E%3Cpath d='M265 207v-16m0 106v-16m37-37h-16m-42 0h-16m63-26l-11 11m-30 30l-11 11m0-52l11 11m30 30l11 11'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: auto, 320px 320px;
+  background-attachment: fixed;
+}
+[data-testid="stHeader"] { background: rgba(245, 244, 239, 0.72); }
+[data-testid="stSidebar"] { background: rgba(226, 228, 221, 0.90); }
+[data-testid="stMetric"] {
+  background: rgba(255, 255, 252, 0.78);
+  border: 1px solid rgba(113, 127, 118, 0.20);
+  padding: 14px 16px;
+  border-radius: 14px;
+}
+[data-testid="stTabs"] [role="tablist"] { gap: 8px; }
+[data-testid="stTabs"] button[role="tab"] {
+  background: rgba(255, 255, 252, 0.60);
+  border-radius: 10px 10px 0 0;
+}
+[data-testid="stExpander"] {
+  background: rgba(255, 255, 252, 0.78);
+  border: 1px solid rgba(113, 127, 118, 0.24);
+  border-radius: 14px;
+}
+[data-testid="stForm"] {
+  background: rgba(255, 255, 252, 0.76);
+  border: 1px solid rgba(113, 127, 118, 0.20);
+  border-radius: 14px;
+  padding: 18px;
+}
+</style>
+""", unsafe_allow_html=True)
+
 init_db()
 with st.sidebar:
     st.subheader("Identificação do responsável")
