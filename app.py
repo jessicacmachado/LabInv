@@ -158,7 +158,26 @@ def exportar_historico_excel(eventos):
     return buffer.getvalue()
 
 
-# BLOCO 8 - CONFIGURAÇÃO DA PÁGINA STREAMLIT
+# BLOCO 8 - CÁLCULOS DOS MÉTRICOS DA TELA INICIAL
+# Os indicadores da tela devem refletir o estado real do banco, sem duplicar itens e sem somar valores inválidos.
+def somar_total_unidades(registros):
+    total = 0.0
+    for item in registros:
+        try:
+            valor = float(item.get("quantidade") or 0)
+            if valor >= 0:
+                total += valor
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+def contar_reagentes_basicos(registros):
+    nomes = {item.get("nome") for item in registros if item.get("nome")}
+    return sum(1 for nome in nomes if nome in reagentes_basicos)
+
+
+# BLOCO 9 - CONFIGURAÇÃO DA PÁGINA STREAMLIT
 st.set_page_config(page_title="LabInv", page_icon="🧪", layout="wide")
 st.markdown("""
 <style>
@@ -175,7 +194,7 @@ st.markdown("""
 init_db()
 st.markdown("<div style='text-align:center;padding:1rem;color:#48564f;font-size:1.12rem;font-style:italic'>🧪 “Na natureza nada se cria, nada se perde, tudo se transforma.” ⚗️</div>", unsafe_allow_html=True)
 
-# BLOCO 9 - SIDEBAR COM RESPONSÁVEL
+# BLOCO 10 - SIDEBAR COM RESPONSÁVEL
 with st.sidebar:
     st.subheader("🧑‍🔬 Identificação do responsável")
     responsavel_atual = st.text_input("Seu nome", key="responsavel_sessao").strip() or "Usuário"
@@ -186,10 +205,13 @@ with st.sidebar:
 st.title("🧪 LabInv — Controle de Estoque de Reagentes Químicos")
 st.caption("Inventário de laboratório")
 registros = listar_reagentes()
+quantidade_total = somar_total_unidades(registros)
+reagentes_basicos_cadastrados = contar_reagentes_basicos(registros)
+
 c1,c2,c3 = st.columns(3)
 c1.metric("🧫 Reagentes cadastrados",len(registros))
-c2.metric("⚖️ Quantidade total",sum(float(i["quantidade"] or 0) for i in registros))
-c3.metric("🧪 Reagentes básicos",sum(i["nome"] in reagentes_basicos for i in registros))
+c2.metric("⚖️ Unidades totais em estoque",round(quantidade_total, 2))
+c3.metric("🧪 Reagentes básicos cadastrados",reagentes_basicos_cadastrados)
 
 aba_lista,aba_retirada,aba_devolucao,aba_cadastro,aba_historico = st.tabs(["📋 Lista","📤 Retirar","📥 Devolver / repor","➕ Cadastrar","🕘 Histórico"])
 
