@@ -10,43 +10,27 @@ DB_NAME = "labinv.db"
 
 # Lista original completa de 30 reagentes do projeto.
 reagentes_basicos = [
-    "1. Ácido Clorídrico (HCl)",
-    "2. Ácido Sulfúrico (H2SO4)",
-    "3. Ácido Nítrico (HNO3)",
-    "4. Ácido Acético (CH3COOH)",
-    "5. Hidróxido de Sódio (NaOH)",
-    "6. Hidróxido de Amônio (NH4OH)",
-    "7. Hidróxido de Cálcio (Ca(OH)2)",
-    "8. Bicarbonato de Sódio (NaHCO3)",
-    "9. Cloreto de Sódio (NaCl)",
-    "10. Sulfato de Cobre II (CuSO4)",
-    "11. Nitrato de Prata (AgNO3)",
-    "12. Cloreto de Bário (BaCl2)",
-    "13. Carbonato de Sódio (Na2CO3)",
-    "14. Permanganato de Potássio (KMnO4)",
-    "15. Iodeto de Potássio (KI)",
-    "16. Cromato de Potássio (K2CrO4)",
-    "17. Água Destilada/Deionizada (H2O)",
-    "18. Álcool Etílico/Etanol (C2H5OH)",
-    "19. Acetona (CH3COCH3)",
-    "20. Hexano (C6H14)",
-    "21. Fenolftaleína",
-    "22. Metiloranje (Alaranjado de Metila)",
-    "23. Azul de Bromotimol",
-    "24. Solução de Amido",
-    "25. Peróxido de Hidrogênio (H2O2)",
-    "26. Glicerina/Glicerol",
-    "27. Ácido Ascórbico",
-    "28. Sulfato de Magnésio (MgSO4) Anidro",
-    "29. Glicose (C6H12O6)",
+    "1. Ácido Clorídrico (HCl)", "2. Ácido Sulfúrico (H2SO4)",
+    "3. Ácido Nítrico (HNO3)", "4. Ácido Acético (CH3COOH)",
+    "5. Hidróxido de Sódio (NaOH)", "6. Hidróxido de Amônio (NH4OH)",
+    "7. Hidróxido de Cálcio (Ca(OH)2)", "8. Bicarbonato de Sódio (NaHCO3)",
+    "9. Cloreto de Sódio (NaCl)", "10. Sulfato de Cobre II (CuSO4)",
+    "11. Nitrato de Prata (AgNO3)", "12. Cloreto de Bário (BaCl2)",
+    "13. Carbonato de Sódio (Na2CO3)", "14. Permanganato de Potássio (KMnO4)",
+    "15. Iodeto de Potássio (KI)", "16. Cromato de Potássio (K2CrO4)",
+    "17. Água Destilada/Deionizada (H2O)", "18. Álcool Etílico/Etanol (C2H5OH)",
+    "19. Acetona (CH3COCH3)", "20. Hexano (C6H14)", "21. Fenolftaleína",
+    "22. Metiloranje (Alaranjado de Metila)", "23. Azul de Bromotimol",
+    "24. Solução de Amido", "25. Peróxido de Hidrogênio (H2O2)",
+    "26. Glicerina/Glicerol", "27. Ácido Ascórbico",
+    "28. Sulfato de Magnésio (MgSO4) Anidro", "29. Glicose (C6H12O6)",
     "30. Nitrato de Amônio (NH4NO3)",
 ]
 
 
 class Reagente:
     def __init__(self, nome, quantidade):
-        self.nome = nome
-        self.quantidade = quantidade
+        self.nome, self.quantidade = nome, quantidade
 
     def exibir_detalhes(self):
         return {"Nome": self.nome, "Quantidade disponível": self.quantidade}
@@ -71,58 +55,30 @@ def get_connection():
 def init_db():
     conn = get_connection()
     conn.execute("""CREATE TABLE IF NOT EXISTS reagentes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT NOT NULL UNIQUE,
-        categoria TEXT,
-        quantidade REAL NOT NULL DEFAULT 2,
-        unidade TEXT DEFAULT 'unidade',
-        local TEXT DEFAULT '',
-        validade TEXT DEFAULT '',
-        status TEXT DEFAULT 'Disponível',
-        observacoes TEXT DEFAULT '',
-        created_at TEXT,
-        updated_at TEXT,
-        updated_by TEXT
-    )""")
+        id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL UNIQUE, categoria TEXT,
+        quantidade REAL NOT NULL DEFAULT 2, unidade TEXT DEFAULT 'unidade', local TEXT DEFAULT '',
+        validade TEXT DEFAULT '', status TEXT DEFAULT 'Disponível', observacoes TEXT DEFAULT '',
+        created_at TEXT, updated_at TEXT, updated_by TEXT)""")
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(reagentes)").fetchall()}
-    new_columns = {
-        "categoria": "TEXT",
-        "quantidade": "REAL NOT NULL DEFAULT 2",
-        "unidade": "TEXT DEFAULT 'unidade'",
-        "local": "TEXT DEFAULT ''",
-        "validade": "TEXT DEFAULT ''",
-        "status": "TEXT DEFAULT 'Disponível'",
-        "observacoes": "TEXT DEFAULT ''",
-        "created_at": "TEXT",
-        "updated_at": "TEXT",
-        "updated_by": "TEXT",
+    columns = {
+        "categoria": "TEXT", "quantidade": "REAL NOT NULL DEFAULT 2", "unidade": "TEXT DEFAULT 'unidade'",
+        "local": "TEXT DEFAULT ''", "validade": "TEXT DEFAULT ''", "status": "TEXT DEFAULT 'Disponível'",
+        "observacoes": "TEXT DEFAULT ''", "created_at": "TEXT", "updated_at": "TEXT", "updated_by": "TEXT",
     }
-    for name, kind in new_columns.items():
+    for name, kind in columns.items():
         if name not in existing:
             conn.execute(f"ALTER TABLE reagentes ADD COLUMN {name} {kind}")
     conn.execute("""CREATE TABLE IF NOT EXISTS historico (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        reagente_id INTEGER,
-        nome_reagente TEXT NOT NULL,
-        acao TEXT NOT NULL,
-        data_hora TEXT NOT NULL,
-        responsavel TEXT NOT NULL,
-        detalhes TEXT NOT NULL
-    )""")
+        id INTEGER PRIMARY KEY AUTOINCREMENT, reagente_id INTEGER, nome_reagente TEXT NOT NULL,
+        acao TEXT NOT NULL, data_hora TEXT NOT NULL, responsavel TEXT NOT NULL, detalhes TEXT NOT NULL)""")
     now = datetime.now().astimezone().isoformat(timespec="seconds")
-    conn.execute("""UPDATE reagentes
-        SET created_at=COALESCE(created_at, ?),
-            updated_at=COALESCE(updated_at, ?),
-            updated_by=COALESCE(updated_by, 'Registro anterior')""", (now, now))
-
-    # Insere todos os 30 reagentes que estiverem faltando, preservando
-    # quantidades e dados existentes (inclusive reagentes personalizados).
+    conn.execute("""UPDATE reagentes SET created_at=COALESCE(created_at, ?),
+        updated_at=COALESCE(updated_at, ?), updated_by=COALESCE(updated_by, 'Registro anterior')""", (now, now))
+    # Adiciona reagentes iniciais ausentes sem alterar dados já cadastrados.
     conn.executemany("""INSERT OR IGNORE INTO reagentes
-        (nome, categoria, quantidade, unidade, local, validade, status,
-         observacoes, created_at, updated_at, updated_by)
-        VALUES (?, 'Geral', 2, 'unidade', 'Estoque inicial', '', 'Disponível',
-                'Reagente básico do programa original', ?, ?, 'Sistema')""",
-        [(name, now, now) for name in reagentes_basicos])
+        (nome,categoria,quantidade,unidade,local,validade,status,observacoes,created_at,updated_at,updated_by)
+        VALUES (?,'Geral',2,'unidade','Estoque inicial','','Disponível',
+        'Reagente básico do programa original',?,?,'Sistema')""", [(name, now, now) for name in reagentes_basicos])
     conn.commit()
     conn.close()
 
@@ -140,22 +96,19 @@ def buscar_reagente(termo):
 
 
 def registrar_historico(conn, reagente_id, nome, acao, responsavel, detalhes):
-    agora = datetime.now().astimezone().isoformat(timespec="seconds")
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
     conn.execute("""INSERT INTO historico
-        (reagente_id, nome_reagente, acao, data_hora, responsavel, detalhes)
-        VALUES (?, ?, ?, ?, ?, ?)""",
-        (reagente_id, nome, acao, agora, responsavel, json.dumps(detalhes, ensure_ascii=False)))
+        (reagente_id,nome_reagente,acao,data_hora,responsavel,detalhes) VALUES (?,?,?,?,?,?)""",
+        (reagente_id, nome, acao, now, responsavel, json.dumps(detalhes, ensure_ascii=False)))
 
 
 def cadastrar_reagente(nome, categoria, quantidade, unidade, local, validade, status, observacoes, responsavel):
     conn = get_connection()
-    agora = datetime.now().astimezone().isoformat(timespec="seconds")
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
     cursor = conn.execute("""INSERT INTO reagentes
-        (nome, categoria, quantidade, unidade, local, validade, status,
-         observacoes, created_at, updated_at, updated_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (nome, categoria, quantidade, unidade, local, validade, status,
-         observacoes, agora, agora, responsavel))
+        (nome,categoria,quantidade,unidade,local,validade,status,observacoes,created_at,updated_at,updated_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (nome,categoria,quantidade,unidade,local,validade,status,observacoes,now,now,responsavel))
     registrar_historico(conn, cursor.lastrowid, nome, "Cadastro", responsavel,
                         {"quantidade inicial": quantidade, "unidade": unidade})
     conn.commit()
@@ -168,17 +121,16 @@ def atualizar_reagente(reagente_id, dados, responsavel, acao="Edição"):
     if row is None:
         conn.close()
         return False
-    anterior = dict(row)
-    agora = datetime.now().astimezone().isoformat(timespec="seconds")
-    campos = ["nome", "categoria", "quantidade", "unidade", "local", "validade", "status", "observacoes"]
-    conn.execute("""UPDATE reagentes SET
-        nome=?, categoria=?, quantidade=?, unidade=?, local=?, validade=?, status=?, observacoes=?,
-        updated_at=?, updated_by=? WHERE id=?""",
-        tuple(dados[campo] for campo in campos) + (agora, responsavel, reagente_id))
-    diferencas = {campo: {"antes": anterior.get(campo), "depois": dados[campo]}
-                  for campo in campos if anterior.get(campo) != dados[campo]}
-    if diferencas:
-        registrar_historico(conn, reagente_id, dados["nome"], acao, responsavel, diferencas)
+    old = dict(row)
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    fields = ["nome","categoria","quantidade","unidade","local","validade","status","observacoes"]
+    conn.execute("""UPDATE reagentes SET nome=?,categoria=?,quantidade=?,unidade=?,local=?,validade=?,
+        status=?,observacoes=?,updated_at=?,updated_by=? WHERE id=?""",
+        tuple(dados[field] for field in fields) + (now, responsavel, reagente_id))
+    changes = {field: {"antes": old.get(field), "depois": dados[field]}
+               for field in fields if old.get(field) != dados[field]}
+    if changes:
+        registrar_historico(conn, reagente_id, dados["nome"], acao, responsavel, changes)
     conn.commit()
     conn.close()
     return True
@@ -191,8 +143,7 @@ def excluir_reagente(reagente_id, responsavel):
         conn.close()
         return False
     item = dict(row)
-    registrar_historico(conn, reagente_id, item["nome"], "Exclusão", responsavel,
-                        {"reagente removido": item})
+    registrar_historico(conn, reagente_id, item["nome"], "Exclusão", responsavel, {"reagente removido": item})
     conn.execute("DELETE FROM reagentes WHERE id=?", (reagente_id,))
     conn.commit()
     conn.close()
@@ -205,16 +156,10 @@ def carregar_historico():
 
 
 def dados_para_edicao(item, quantidade):
-    return {
-        "nome": item["nome"],
-        "categoria": item.get("categoria") or "Geral",
-        "quantidade": quantidade,
-        "unidade": item.get("unidade") or "unidade",
-        "local": item.get("local") or "",
-        "validade": item.get("validade") or "",
-        "status": item.get("status") or "Disponível",
-        "observacoes": item.get("observacoes") or "",
-    }
+    return {"nome": item["nome"], "categoria": item.get("categoria") or "Geral", "quantidade": quantidade,
+            "unidade": item.get("unidade") or "unidade", "local": item.get("local") or "",
+            "validade": item.get("validade") or "", "status": item.get("status") or "Disponível",
+            "observacoes": item.get("observacoes") or ""}
 
 
 st.set_page_config(page_title="LabInv", page_icon="🧪", layout="wide")
@@ -224,7 +169,7 @@ with st.sidebar:
     responsavel_atual = st.text_input("Seu nome", key="responsavel_sessao").strip() or "Usuário"
 
 st.title("🧪 LabInv — Controle de Estoque de Reagentes Químicos")
-st.caption("Inventário de laboratório | Herança, polimorfismo e SQLite")
+st.caption("Inventário de laboratório")
 registros = listar_reagentes()
 c1, c2, c3 = st.columns(3)
 c1.metric("Reagentes cadastrados", len(registros))
@@ -232,11 +177,9 @@ c2.metric("Quantidade total", sum(float(item["quantidade"] or 0) for item in reg
 c3.metric("Reagentes básicos", sum(item["nome"] in reagentes_basicos for item in registros))
 
 aba_lista, aba_retirada, aba_devolucao, aba_cadastro, aba_historico = st.tabs(
-    ["📋 Lista", "📤 Retirar", "📥 Devolver / repor", "➕ Cadastrar", "🕘 Histórico"]
-)
+    ["📋 Lista", "📤 Retirar", "📥 Devolver / repor", "➕ Cadastrar", "🕘 Histórico"])
 
 with aba_lista:
-    # Expander fechado inicialmente: clique no cabeçalho para revelar a lista.
     with st.expander("📋 Mostrar / ocultar lista de reagentes", expanded=False):
         termo = st.text_input("Buscar pelo nome ou parte do nome", key="busca_lista")
         resultados = buscar_reagente(termo) if termo.strip() else listar_reagentes()
@@ -245,18 +188,13 @@ with aba_lista:
             for item in resultados:
                 classe = ReagenteBasico if item["nome"] in reagentes_basicos else ReagentePersonalizado
                 linha = classe(item["nome"], item["quantidade"]).exibir_detalhes()
-                linha.update({
-                    "Categoria": item.get("categoria") or "Geral",
-                    "Unidade": item.get("unidade") or "unidade",
-                    "Local": item.get("local") or "",
-                    "Validade": item.get("validade") or "",
-                    "Status": item.get("status") or "Disponível",
-                    "Atualizado em": item.get("updated_at") or "",
-                    "Responsável": item.get("updated_by") or "",
-                })
+                linha.update({"Categoria": item.get("categoria") or "Geral", "Unidade": item.get("unidade") or "unidade",
+                    "Local": item.get("local") or "", "Validade": item.get("validade") or "",
+                    "Status": item.get("status") or "Disponível", "Atualizado em": item.get("updated_at") or "",
+                    "Responsável": item.get("updated_by") or ""})
                 tabela.append(linha)
             st.dataframe(pd.DataFrame(tabela), use_container_width=True, hide_index=True)
-            st.caption(f"Total de reagentes exibidos: {len(resultados)} de 30 reagentes básicos (além dos personalizados).")
+            st.caption(f"Total de reagentes exibidos: {len(resultados)}")
         else:
             st.info("Nenhum reagente encontrado.")
 
@@ -273,8 +211,9 @@ with aba_retirada:
                 item = next(row for row in listar_reagentes() if row["nome"] == nome)
                 saldo = float(item["quantidade"] or 0)
                 if saldo >= quantidade:
-                    atualizar_reagente(item["id"], dados_para_edicao(item, saldo - quantidade), responsavel_atual, "Retirada")
-                    st.success(f"Retirada realizada. Saldo: {saldo - quantidade:g} {item.get('unidade') or 'unidade'}.")
+                    dados = dados_para_edicao(item, saldo - quantidade)
+                    atualizar_reagente(item["id"], dados, responsavel_atual, "Retirada")
+                    st.success(f"Retirada realizada. Saldo: {dados['quantidade']:g} {dados['unidade']}.")
                     st.rerun()
                 else:
                     st.error(f"Estoque insuficiente. Disponível: {saldo:g} {item.get('unidade') or 'unidade'}.")
@@ -293,9 +232,9 @@ with aba_devolucao:
             confirmar = st.form_submit_button("Confirmar devolução")
             if confirmar:
                 item = next(row for row in listar_reagentes() if row["nome"] == nome)
-                novo_saldo = float(item["quantidade"] or 0) + quantidade
-                atualizar_reagente(item["id"], dados_para_edicao(item, novo_saldo), responsavel_atual, "Devolução / reposição")
-                st.success(f"Devolução registrada. Novo saldo: {novo_saldo:g} {item.get('unidade') or 'unidade'}.")
+                saldo = float(item["quantidade"] or 0) + quantidade
+                atualizar_reagente(item["id"], dados_para_edicao(item, saldo), responsavel_atual, "Devolução / reposição")
+                st.success(f"Devolução registrada. Novo saldo: {saldo:g} {item.get('unidade') or 'unidade'}.")
                 st.rerun()
         else:
             st.info("Nenhum reagente encontrado com esse nome.")
@@ -317,13 +256,13 @@ with aba_cadastro:
             nome_novo = nome_novo.strip()
             if not nome_novo:
                 st.error("O nome não pode ficar vazio.")
-            elif any(item["nome"].casefold() == nome_novo.casefold() for item in listar_reagentes()):
+            elif any(row["nome"].casefold() == nome_novo.casefold() for row in listar_reagentes()):
                 st.warning("Esse reagente já está cadastrado.")
             else:
                 try:
                     cadastrar_reagente(nome_novo, categoria_nova, quantidade_nova, unidade_nova,
-                                       local_novo.strip(), validade_nova.isoformat() if validade_nova else "",
-                                       status_novo, observacoes_novas.strip(), responsavel_atual)
+                        local_novo.strip(), validade_nova.isoformat() if validade_nova else "",
+                        status_novo, observacoes_novas.strip(), responsavel_atual)
                     st.success("Reagente cadastrado com sucesso.")
                     st.rerun()
                 except sqlite3.IntegrityError:
@@ -349,9 +288,9 @@ with aba_cadastro:
             unidade_editada = st.selectbox("Unidade", unidades, index=unidades.index(unidade_atual) if unidade_atual in unidades else unidades.index("unidade"))
             local_editado = st.text_input("Local", value=item.get("local") or "")
             validade_editada = st.text_input("Validade (AAAA-MM-DD)", value=item.get("validade") or "")
-            status_opcoes = ["Disponível", "Baixo", "Vencido", "Em uso"]
+            statuses = ["Disponível", "Baixo", "Vencido", "Em uso"]
             status_atual = item.get("status") or "Disponível"
-            status_editado = st.selectbox("Status", status_opcoes, index=status_opcoes.index(status_atual) if status_atual in status_opcoes else 0)
+            status_editado = st.selectbox("Status", statuses, index=statuses.index(status_atual) if status_atual in statuses else 0)
             observacoes_editadas = st.text_area("Observações", value=item.get("observacoes") or "")
             salvar, excluir = st.columns(2)
             salvar_clicado = salvar.form_submit_button("Salvar alterações")
@@ -361,9 +300,9 @@ with aba_cadastro:
                     st.error("O nome não pode ficar vazio.")
                 else:
                     dados = {"nome": nome_editado.strip(), "categoria": categoria_editada,
-                             "quantidade": quantidade_editada, "unidade": unidade_editada,
-                             "local": local_editado.strip(), "validade": validade_editada.strip(),
-                             "status": status_editado, "observacoes": observacoes_editadas.strip()}
+                        "quantidade": quantidade_editada, "unidade": unidade_editada,
+                        "local": local_editado.strip(), "validade": validade_editada.strip(),
+                        "status": status_editado, "observacoes": observacoes_editadas.strip()}
                     try:
                         atualizar_reagente(item["id"], dados, responsavel_atual)
                         st.success("Reagente atualizado. O histórico guarda os campos alterados.")
@@ -388,7 +327,6 @@ with aba_historico:
                        | historico_df["responsavel"].str.contains(filtro.strip(), case=False, na=False))
             historico_df = historico_df[mascara]
         historico_df = historico_df.rename(columns={"data_hora": "Data e hora", "responsavel": "Responsável",
-                                                    "acao": "Operação", "nome_reagente": "Reagente",
-                                                    "detalhes": "Detalhes da alteração"})
+            "acao": "Operação", "nome_reagente": "Reagente", "detalhes": "Detalhes da alteração"})
         st.dataframe(historico_df[["Data e hora", "Responsável", "Operação", "Reagente", "Detalhes da alteração"]],
                      use_container_width=True, hide_index=True)
