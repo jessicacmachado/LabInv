@@ -1,0 +1,12 @@
+[server]
+headless = true
+port = 8501
+enableCORS = false
+enableWebsocketCompression = true
+runOnSave = true
+
+[client]
+showErrorDetails = true
+
+[global]
+developmentMode = false
