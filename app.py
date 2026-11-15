@@ -1,31 +1,47 @@
 import sqlite3
-from datetime import datetime
+from datetime import date
 
 import pandas as pd
 import streamlit as st
 
 DB_NAME = "labinv.db"
+CATEGORIAS = ["Solvente", "Ácido", "Base", "Indicador", "Sal", "Outro"]
+UNIDADES = ["mL", "g", "mg", "L", "kg", "unidade"]
+STATUS = ["Disponível", "Baixo", "Vencido", "Em uso"]
 
-
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS reagentes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL,
-            categoria TEXT,
-            quantidade INTEGER,
-            unidade TEXT,
-            local TEXT,
-            validade TEXT,
-            status TEXT,
-            observacoes TEXT
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
+# Lista original dos 30 reagentes do projeto.
+REAGENTES_INICIAIS = [
+    ("Ácido Clorídrico (HCl)", "Ácido"),
+    ("Ácido Sulfúrico (H2SO4)", "Ácido"),
+    ("Ácido Nítrico (HNO3)", "Ácido"),
+    ("Ácido Acético (CH3COOH)", "Ácido"),
+    ("Hidróxido de Sódio (NaOH)", "Base"),
+    ("Hidróxido de Amônio (NH4OH)", "Base"),
+    ("Hidróxido de Cálcio (Ca(OH)2)", "Base"),
+    ("Bicarbonato de Sódio (NaHCO3)", "Sal"),
+    ("Cloreto de Sódio (NaCl)", "Sal"),
+    ("Sulfato de Cobre II (CuSO4)", "Sal"),
+    ("Nitrato de Prata (AgNO3)", "Sal"),
+    ("Cloreto de Bário (BaCl2)", "Sal"),
+    ("Carbonato de Sódio (Na2CO3)", "Sal"),
+    ("Permanganato de Potássio (KMnO4)", "Sal"),
+    ("Iodeto de Potássio (KI)", "Sal"),
+    ("Cromato de Potássio (K2CrO4)", "Sal"),
+    ("Água Destilada/Deionizada (H2O)", "Outro"),
+    ("Álcool Etílico/Etanol (C2H5OH)", "Solvente"),
+    ("Acetona (CH3COCH3)", "Solvente"),
+    ("Hexano (C6H14)", "Solvente"),
+    ("Fenolftaleína", "Indicador"),
+    ("Metiloranje (Alaranjado de Metila)", "Indicador"),
+    ("Azul de Bromotimol", "Indicador"),
+    ("Solução de Amido", "Outro"),
+    ("Peróxido de Hidrogênio (H2O2)", "Outro"),
+    ("Glicerina/Glicerol", "Outro"),
+    ("Ácido Ascórbico", "Ácido"),
+    ("Sulfato de Magnésio (MgSO4) Anidro", "Sal"),
+    ("Glicose (C6H12O6)", "Outro"),
+    ("Nitrato de Amônio (NH4NO3)", "Sal"),
+]
 
 
 def get_connection():
@@ -34,187 +50,169 @@ def get_connection():
     return conn
 
 
+def init_db():
+    with get_connection() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reagentes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT NOT NULL,
+                categoria TEXT,
+                quantidade REAL,
+                unidade TEXT,
+                local TEXT,
+                validade TEXT,
+                status TEXT,
+                observacoes TEXT
+            )
+            """
+        )
+        # Carrega os 30 reagentes uma única vez, sem duplicá-los em cada visita.
+        total = conn.execute("SELECT COUNT(*) FROM reagentes").fetchone()[0]
+        if total == 0:
+            conn.executemany(
+                """
+                INSERT INTO reagentes
+                    (nome, categoria, quantidade, unidade, local, validade, status, observacoes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (nome, categoria, 2, "unidade", "", "", "Disponível", "Reagente da lista inicial")
+                    for nome, categoria in REAGENTES_INICIAIS
+                ],
+            )
+
+
 def load_data():
-    conn = get_connection()
-    data = conn.execute(
-        """
-        SELECT id, nome, categoria, quantidade, unidade, local, validade, status, observacoes
-        FROM reagentes
-        ORDER BY nome ASC
-        """
-    ).fetchall()
-    conn.close()
-    return [dict(row) for row in data]
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT id, nome, categoria, quantidade, unidade, local, validade, status, observacoes
+               FROM reagentes ORDER BY nome COLLATE NOCASE"""
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def add_reagent(nome, categoria, quantidade, unidade, local, validade, status, observacoes):
-    conn = get_connection()
-    conn.execute(
-        """
-        INSERT INTO reagentes (nome, categoria, quantidade, unidade, local, validade, status, observacoes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (nome, categoria, quantidade, unidade, local, validade, status, observacoes),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO reagentes
+               (nome, categoria, quantidade, unidade, local, validade, status, observacoes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (nome, categoria, quantidade, unidade, local, validade, status, observacoes),
+        )
 
 
-def update_reagent(reagente_id, nome, categoria, quantidade, unidade, local, validade, status, observacoes):
-    conn = get_connection()
-    conn.execute(
-        """
-        UPDATE reagentes
-        SET nome = ?, categoria = ?, quantidade = ?, unidade = ?, local = ?, validade = ?, status = ?, observacoes = ?
-        WHERE id = ?
-        """,
-        (nome, categoria, quantidade, unidade, local, validade, status, observacoes, reagente_id),
-    )
-    conn.commit()
-    conn.close()
+def update_reagent(reagent_id, nome, categoria, quantidade, unidade, local, validade, status, observacoes):
+    with get_connection() as conn:
+        conn.execute(
+            """UPDATE reagentes
+               SET nome=?, categoria=?, quantidade=?, unidade=?, local=?, validade=?, status=?, observacoes=?
+               WHERE id=?""",
+            (nome, categoria, quantidade, unidade, local, validade, status, observacoes, reagent_id),
+        )
 
 
-def delete_reagent(reagente_id):
-    conn = get_connection()
-    conn.execute("DELETE FROM reagentes WHERE id = ?", (reagente_id,))
-    conn.commit()
-    conn.close()
+def delete_reagent(reagent_id):
+    with get_connection() as conn:
+        conn.execute("DELETE FROM reagentes WHERE id=?", (reagent_id,))
 
 
-def generate_summary(df):
-    total_itens = int(df["quantidade"].sum()) if not df.empty else 0
-    reagentes_baixo = int((df["quantidade"] <= 5).sum()) if not df.empty else 0
-    categorias = df["categoria"].nunique() if not df.empty else 0
-    return total_itens, reagentes_baixo, categorias
-
-
-# Inicialização
 init_db()
-
 st.set_page_config(page_title="LabInv", page_icon="🧪", layout="wide")
-st.title("LabInv - Inventário de Laboratório")
-st.caption("Controle de reagentes e materiais de laboratório")
+st.title("LabInv — Inventário de Laboratório")
+st.caption("Controle de estoque de reagentes químicos")
 
-# Sidebar para cadastro e edição
 with st.sidebar:
     st.header("Cadastrar reagente")
     with st.form("form_reagente", clear_on_submit=True):
         nome = st.text_input("Nome do reagente")
-        categoria = st.selectbox(
-            "Categoria",
-            ["Solvente", "Ácido", "Base", "Indicador", "Sal", "Outro"],
-        )
-        quantidade = st.number_input("Quantidade", min_value=0, value=0, step=1)
-        unidade = st.selectbox("Unidade", ["mL", "g", "mg", "L", "kg", "unidade"])
+        categoria = st.selectbox("Categoria", CATEGORIAS)
+        quantidade = st.number_input("Quantidade", min_value=0.0, value=0.0, step=1.0)
+        unidade = st.selectbox("Unidade", UNIDADES)
         local = st.text_input("Local de armazenamento")
-        validade = st.date_input("Data de validade", min_value=datetime.now().date())
-        status = st.selectbox("Status", ["Disponível", "Baixo", "Vencido", "Em uso"])
+        validade = st.date_input("Data de validade", value=None)
+        status = st.selectbox("Status", STATUS)
         observacoes = st.text_area("Observações")
-        submitted = st.form_submit_button("Salvar")
-
-        if submitted:
+        if st.form_submit_button("Cadastrar"):
             if nome.strip():
-                add_reagent(
-                    nome.strip(),
-                    categoria,
-                    int(quantidade),
-                    unidade,
-                    local.strip(),
-                    validade.isoformat(),
-                    status,
-                    observacoes.strip(),
-                )
-                st.success("Reagente cadastrado com sucesso!")
+                add_reagent(nome.strip(), categoria, quantidade, unidade, local.strip(),
+                            validade.isoformat() if validade else "", status, observacoes.strip())
+                st.success("Reagente cadastrado!")
+                st.rerun()
             else:
                 st.warning("Informe o nome do reagente.")
 
-# Filtros
-raw_data = load_data()
-df = pd.DataFrame(raw_data)
+all_data = load_data()
+df = pd.DataFrame(all_data)
+st.subheader("Lista inicial de 30 reagentes e estoque")
 
-if not df.empty:
-    st.sidebar.subheader("Filtros")
-    categorias = ["Todos"] + sorted(df["categoria"].dropna().unique().tolist())
-    categoria_filtro = st.sidebar.selectbox("Categoria", categorias)
-    status_filtro = st.sidebar.selectbox(
-        "Status",
-        ["Todos", "Disponível", "Baixo", "Vencido", "Em uso"],
-    )
+with st.sidebar:
+    st.subheader("Filtros")
+    if not df.empty:
+        categorias_disponiveis = ["Todas"] + sorted(df["categoria"].dropna().unique().tolist())
+        categoria_filtro = st.selectbox("Categoria", categorias_disponiveis)
+        busca = st.text_input("Buscar pelo nome")
+    else:
+        categoria_filtro, busca = "Todas", ""
 
-    if categoria_filtro != "Todos":
-        df = df[df["categoria"] == categoria_filtro]
-    if status_filtro != "Todos":
-        df = df[df["status"] == status_filtro]
+visiveis = df.copy()
+if not visiveis.empty:
+    if categoria_filtro != "Todas":
+        visiveis = visiveis[visiveis["categoria"] == categoria_filtro]
+    if busca.strip():
+        visiveis = visiveis[visiveis["nome"].str.contains(busca.strip(), case=False, na=False)]
+
+m1, m2, m3 = st.columns(3)
+m1.metric("Reagentes cadastrados", len(df))
+m2.metric("Quantidade total", float(df["quantidade"].sum()) if not df.empty else 0)
+m3.metric("Categorias", int(df["categoria"].nunique()) if not df.empty else 0)
+
+if visiveis.empty:
+    st.info("Nenhum reagente encontrado.")
 else:
-    df = pd.DataFrame(
-        columns=["id", "nome", "categoria", "quantidade", "unidade", "local", "validade", "status", "observacoes"]
-    )
-
-# Resumo
-col1, col2, col3 = st.columns(3)
-resumo_total, resumo_baixo, resumo_categorias = generate_summary(df)
-
-col1.metric("Total em estoque", resumo_total)
-col2.metric("Itens em nível baixo", resumo_baixo)
-col3.metric("Categorias", resumo_categorias)
-
-# Tabela principal
-if df.empty:
-    st.info("Ainda não há reagentes cadastrados. Use o painel lateral para adicionar o primeiro item.")
-else:
-    st.subheader("Reagentes cadastrados")
     st.dataframe(
-        df[["nome", "categoria", "quantidade", "unidade", "local", "validade", "status"]],
+        visiveis[["nome", "categoria", "quantidade", "unidade", "local", "validade", "status"]],
         use_container_width=True,
         hide_index=True,
     )
 
-    st.subheader("Ações")
-    selected_id = st.selectbox(
-        "Selecione o reagente para editar ou remover",
-        options=[int(item["id"]) for item in load_data()],
-        format_func=lambda x: next(
-            item["nome"] for item in load_data() if int(item["id"]) == x
-        ),
-    )
-
-    item = next((row for row in load_data() if int(row["id"]) == selected_id), None)
-    if item:
-        with st.form("edit_reagente"):
-            st.write(f"Editando: {item['nome']}")
-            nome_edit = st.text_input("Nome", value=item["nome"])
-            categoria_edit = st.selectbox(
-                "Categoria",
-                ["Solvente", "Ácido", "Base", "Indicador", "Sal", "Outro"],
-                index=["Solvente", "Ácido", "Base", "Indicador", "Sal", "Outro"].index(item["categoria"] or "Outro"),
-            )
-            quantidade_edit = st.number_input("Quantidade", min_value=0, value=int(item["quantidade"] or 0), step=1)
-            unidade_edit = st.selectbox("Unidade", ["mL", "g", "mg", "L", "kg", "unidade"], index=["mL", "g", "mg", "L", "kg", "unidade"].index(item["unidade"] or "unidade"))
-            local_edit = st.text_input("Local", value=item["local"] or "")
-            validade_edit = st.date_input("Validade", value=datetime.strptime(item["validade"], "%Y-%m-%d").date() if item.get("validade") else datetime.now().date())
-            status_edit = st.selectbox("Status", ["Disponível", "Baixo", "Vencido", "Em uso"], index=["Disponível", "Baixo", "Vencido", "Em uso"].index(item["status"] or "Disponível"))
-            observacoes_edit = st.text_area("Observações", value=item["observacoes"] or "")
-
-            col_edit, col_delete = st.columns([1, 1])
-            update_btn = col_edit.form_submit_button("Salvar alterações")
-            delete_btn = col_delete.form_submit_button("Excluir")
-
-            if update_btn:
-                update_reagent(
-                    selected_id,
-                    nome_edit.strip(),
-                    categoria_edit,
-                    int(quantidade_edit),
-                    unidade_edit,
-                    local_edit.strip(),
-                    validade_edit.isoformat(),
-                    status_edit,
-                    observacoes_edit.strip(),
-                )
-                st.success("Reagente atualizado com sucesso!")
+if all_data:
+    st.subheader("Atualizar quantidade, editar ou excluir")
+    items_by_id = {int(item["id"]): item for item in all_data}
+    selected_id = st.selectbox("Reagente", list(items_by_id),
+                               format_func=lambda reagent_id: items_by_id[reagent_id]["nome"])
+    item = items_by_id[selected_id]
+    with st.form("editar_reagente"):
+        nome_edit = st.text_input("Nome", value=item["nome"])
+        categoria_edit = st.selectbox("Categoria", CATEGORIAS,
+                                      index=CATEGORIAS.index(item["categoria"] if item["categoria"] in CATEGORIAS else "Outro"))
+        quantidade_edit = st.number_input("Quantidade", min_value=0.0,
+                                          value=float(item["quantidade"] or 0), step=1.0)
+        unidade_edit = st.selectbox("Unidade", UNIDADES,
+                                    index=UNIDADES.index(item["unidade"] if item["unidade"] in UNIDADES else "unidade"))
+        local_edit = st.text_input("Local", value=item["local"] or "")
+        try:
+            validade_atual = date.fromisoformat(item["validade"]) if item["validade"] else None
+        except ValueError:
+            validade_atual = None
+        validade_edit = st.date_input("Validade", value=validade_atual)
+        status_edit = st.selectbox("Status", STATUS,
+                                   index=STATUS.index(item["status"] if item["status"] in STATUS else "Disponível"))
+        observacoes_edit = st.text_area("Observações", value=item["observacoes"] or "")
+        salvar, excluir = st.columns(2)
+        salvar_btn = salvar.form_submit_button("Salvar alterações")
+        excluir_btn = excluir.form_submit_button("Excluir")
+        if salvar_btn:
+            if nome_edit.strip():
+                update_reagent(selected_id, nome_edit.strip(), categoria_edit, quantidade_edit,
+                               unidade_edit, local_edit.strip(),
+                               validade_edit.isoformat() if validade_edit else "",
+                               status_edit, observacoes_edit.strip())
+                st.success("Reagente atualizado!")
                 st.rerun()
-
-            if delete_btn:
-                delete_reagent(selected_id)
-                st.success("Reagente removido com sucesso!")
-                st.rerun()
+            else:
+                st.error("O nome não pode ficar vazio.")
+        if excluir_btn:
+            delete_reagent(selected_id)
+            st.success("Reagente excluído.")
+            st.rerun()
