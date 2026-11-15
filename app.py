@@ -2,11 +2,15 @@
 import json
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 DB_NAME = "labinv.db"
+LIMITE_REAGENTES = 300
+LIMITE_HISTORICO = 300
+PDF_GUIA = Path(__file__).resolve().parent / "pdfGuia_Basico_Seguranca_Quimica_30_Reagentes.pdf"
 reagentes_basicos = [
     "1. Ácido Clorídrico (HCl)", "2. Ácido Sulfúrico (H2SO4)", "3. Ácido Nítrico (HNO3)",
     "4. Ácido Acético (CH3COOH)", "5. Hidróxido de Sódio (NaOH)", "6. Hidróxido de Amônio (NH4OH)",
@@ -43,79 +47,97 @@ def get_connection():
 
 
 def init_db():
-    conn = get_connection()
-    conn.execute("""CREATE TABLE IF NOT EXISTS reagentes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL UNIQUE, categoria TEXT,
-        quantidade REAL NOT NULL DEFAULT 2, unidade TEXT DEFAULT 'unidade', local TEXT DEFAULT '',
-        validade TEXT DEFAULT '', status TEXT DEFAULT 'Disponível', observacoes TEXT DEFAULT '',
-        created_at TEXT, updated_at TEXT, updated_by TEXT)""")
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(reagentes)").fetchall()}
-    columns = {"categoria":"TEXT", "quantidade":"REAL NOT NULL DEFAULT 2", "unidade":"TEXT DEFAULT 'unidade'",
-        "local":"TEXT DEFAULT ''", "validade":"TEXT DEFAULT ''", "status":"TEXT DEFAULT 'Disponível'",
-        "observacoes":"TEXT DEFAULT ''", "created_at":"TEXT", "updated_at":"TEXT", "updated_by":"TEXT"}
-    for name, kind in columns.items():
-        if name not in existing:
-            conn.execute(f"ALTER TABLE reagentes ADD COLUMN {name} {kind}")
-    conn.execute("""CREATE TABLE IF NOT EXISTS historico (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, reagente_id INTEGER, nome_reagente TEXT NOT NULL,
-        acao TEXT NOT NULL, data_hora TEXT NOT NULL, responsavel TEXT NOT NULL, detalhes TEXT NOT NULL)""")
-    now = datetime.now().astimezone().isoformat(timespec="seconds")
-    conn.execute("UPDATE reagentes SET created_at=COALESCE(created_at, ?), updated_at=COALESCE(updated_at, ?), updated_by=COALESCE(updated_by, 'Registro anterior')", (now, now))
-    conn.executemany("""INSERT OR IGNORE INTO reagentes
-        (nome,categoria,quantidade,unidade,local,validade,status,observacoes,created_at,updated_at,updated_by)
-        VALUES (?,'Geral',2,'unidade','Estoque inicial','','Disponível','Reagente básico do programa original',?,?,'Sistema')""",
-        [(name, now, now) for name in reagentes_basicos])
-    conn.commit(); conn.close()
+    with get_connection() as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS reagentes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL UNIQUE, categoria TEXT,
+            quantidade REAL NOT NULL DEFAULT 2, unidade TEXT DEFAULT 'unidade', local TEXT DEFAULT '',
+            validade TEXT DEFAULT '', status TEXT DEFAULT 'Disponível', observacoes TEXT DEFAULT '',
+            created_at TEXT, updated_at TEXT, updated_by TEXT)""")
+        existing = {r["name"] for r in conn.execute("PRAGMA table_info(reagentes)").fetchall()}
+        columns = {"categoria":"TEXT", "quantidade":"REAL NOT NULL DEFAULT 2", "unidade":"TEXT DEFAULT 'unidade'",
+            "local":"TEXT DEFAULT ''", "validade":"TEXT DEFAULT ''", "status":"TEXT DEFAULT 'Disponível'",
+            "observacoes":"TEXT DEFAULT ''", "created_at":"TEXT", "updated_at":"TEXT", "updated_by":"TEXT"}
+        for name, kind in columns.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE reagentes ADD COLUMN {name} {kind}")
+        conn.execute("""CREATE TABLE IF NOT EXISTS historico (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, reagente_id INTEGER, nome_reagente TEXT NOT NULL,
+            acao TEXT NOT NULL, data_hora TEXT NOT NULL, responsavel TEXT NOT NULL, detalhes TEXT NOT NULL)""")
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        conn.execute("UPDATE reagentes SET created_at=COALESCE(created_at, ?), updated_at=COALESCE(updated_at, ?), updated_by=COALESCE(updated_by, 'Registro anterior')", (now, now))
+        conn.executemany("""INSERT OR IGNORE INTO reagentes
+            (nome,categoria,quantidade,unidade,local,validade,status,observacoes,created_at,updated_at,updated_by)
+            VALUES (?,'Geral',2,'unidade','Estoque inicial','','Disponível','Reagente básico do programa original',?,?,'Sistema')""",
+            [(name, now, now) for name in reagentes_basicos[:LIMITE_REAGENTES]])
 
 
 def listar_reagentes():
     with get_connection() as conn:
-        return [dict(r) for r in conn.execute("SELECT * FROM reagentes ORDER BY id").fetchall()]
+        return [dict(r) for r in conn.execute("SELECT * FROM reagentes ORDER BY id LIMIT ?", (LIMITE_REAGENTES,)).fetchall()]
 
 
 def buscar_reagente(termo):
     with get_connection() as conn:
-        return [dict(r) for r in conn.execute("SELECT * FROM reagentes WHERE nome LIKE ? ORDER BY id", (f"%{termo}%",)).fetchall()]
+        return [dict(r) for r in conn.execute("SELECT * FROM reagentes WHERE nome LIKE ? ORDER BY id LIMIT ?", (f"%{termo}%", LIMITE_REAGENTES)).fetchall()]
 
 
 def registrar_historico(conn, rid, nome, acao, responsavel, detalhes):
     now = datetime.now().astimezone().isoformat(timespec="seconds")
     conn.execute("INSERT INTO historico (reagente_id,nome_reagente,acao,data_hora,responsavel,detalhes) VALUES (?,?,?,?,?,?)",
         (rid, nome, acao, now, responsavel, json.dumps(detalhes, ensure_ascii=False)))
+    conn.execute("DELETE FROM historico WHERE id NOT IN (SELECT id FROM historico ORDER BY id DESC LIMIT ?)", (LIMITE_HISTORICO,))
 
 
 def cadastrar_reagente(nome, categoria, quantidade, unidade, local, validade, status, observacoes, responsavel):
-    conn = get_connection(); now = datetime.now().astimezone().isoformat(timespec="seconds")
-    cur = conn.execute("""INSERT INTO reagentes (nome,categoria,quantidade,unidade,local,validade,status,observacoes,created_at,updated_at,updated_by)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)""", (nome,categoria,quantidade,unidade,local,validade,status,observacoes,now,now,responsavel))
-    registrar_historico(conn, cur.lastrowid, nome, "Cadastro", responsavel, {"quantidade inicial":quantidade,"unidade":unidade})
-    conn.commit(); conn.close()
+    conn = get_connection()
+    try:
+        if conn.execute("SELECT COUNT(*) FROM reagentes").fetchone()[0] >= LIMITE_REAGENTES:
+            return False
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        cur = conn.execute("""INSERT INTO reagentes (nome,categoria,quantidade,unidade,local,validade,status,observacoes,created_at,updated_at,updated_by)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)""", (nome,categoria,quantidade,unidade,local,validade,status,observacoes,now,now,responsavel))
+        registrar_historico(conn, cur.lastrowid, nome, "Cadastro", responsavel, {"quantidade inicial":quantidade,"unidade":unidade})
+        conn.commit()
+        return True
+    finally:
+        conn.close()
 
 
 def atualizar_reagente(rid, dados, responsavel, acao="Edição"):
-    conn = get_connection(); row = conn.execute("SELECT * FROM reagentes WHERE id=?", (rid,)).fetchone()
-    if row is None:
-        conn.close(); return False
-    old = dict(row); now = datetime.now().astimezone().isoformat(timespec="seconds")
-    fields = ["nome","categoria","quantidade","unidade","local","validade","status","observacoes"]
-    conn.execute("""UPDATE reagentes SET nome=?,categoria=?,quantidade=?,unidade=?,local=?,validade=?,status=?,observacoes=?,updated_at=?,updated_by=? WHERE id=?""",
-        tuple(dados[f] for f in fields)+(now,responsavel,rid))
-    changes = {f:{"antes":old.get(f),"depois":dados[f]} for f in fields if old.get(f)!=dados[f]}
-    if changes: registrar_historico(conn,rid,dados["nome"],acao,responsavel,changes)
-    conn.commit(); conn.close(); return True
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM reagentes WHERE id=?", (rid,)).fetchone()
+        if row is None:
+            return False
+        old = dict(row); now = datetime.now().astimezone().isoformat(timespec="seconds")
+        fields = ["nome","categoria","quantidade","unidade","local","validade","status","observacoes"]
+        conn.execute("""UPDATE reagentes SET nome=?,categoria=?,quantidade=?,unidade=?,local=?,validade=?,status=?,observacoes=?,updated_at=?,updated_by=? WHERE id=?""",
+            tuple(dados[f] for f in fields)+(now,responsavel,rid))
+        changes = {f:{"antes":old.get(f),"depois":dados[f]} for f in fields if old.get(f)!=dados[f]}
+        if changes:
+            registrar_historico(conn,rid,dados["nome"],acao,responsavel,changes)
+        conn.commit()
+        return True
+    finally:
+        conn.close()
 
 
 def excluir_reagente(rid, responsavel):
-    conn = get_connection(); row = conn.execute("SELECT * FROM reagentes WHERE id=?",(rid,)).fetchone()
-    if row is None:
-        conn.close(); return False
-    item=dict(row); registrar_historico(conn,rid,item["nome"],"Exclusão",responsavel,{"reagente removido":item})
-    conn.execute("DELETE FROM reagentes WHERE id=?",(rid,)); conn.commit(); conn.close(); return True
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM reagentes WHERE id=?",(rid,)).fetchone()
+        if row is None:
+            return False
+        item=dict(row); registrar_historico(conn,rid,item["nome"],"Exclusão",responsavel,{"reagente removido":item})
+        conn.execute("DELETE FROM reagentes WHERE id=?",(rid,)); conn.commit()
+        return True
+    finally:
+        conn.close()
 
 
 def carregar_historico():
     with get_connection() as conn:
-        return [dict(r) for r in conn.execute("SELECT * FROM historico ORDER BY id DESC").fetchall()]
+        return [dict(r) for r in conn.execute("SELECT * FROM historico ORDER BY id DESC LIMIT ?", (LIMITE_HISTORICO,)).fetchall()]
 
 
 def dados_para_edicao(item, quantidade):
@@ -141,6 +163,12 @@ st.markdown("<div style='text-align:center;padding:1rem;color:#48564f;font-size:
 with st.sidebar:
     st.subheader("🧑‍🔬 Identificação do responsável")
     responsavel_atual = st.text_input("Seu nome", key="responsavel_sessao").strip() or "Usuário"
+    st.divider()
+    st.subheader("📄 Guia de segurança / FISPQ")
+    if PDF_GUIA.is_file():
+        st.download_button("📥 Baixar guia FISPQ", data=PDF_GUIA.read_bytes(), file_name=PDF_GUIA.name, mime="application/pdf", use_container_width=True)
+    else:
+        st.warning("PDF do guia não encontrado na pasta do projeto.")
 st.title("🧪 LabInv — Controle de Estoque de Reagentes Químicos")
 st.caption("Inventário de laboratório")
 registros = listar_reagentes()
@@ -148,6 +176,7 @@ c1,c2,c3 = st.columns(3)
 c1.metric("🧫 Reagentes cadastrados",len(registros))
 c2.metric("⚖️ Quantidade total",sum(float(i["quantidade"] or 0) for i in registros))
 c3.metric("🧪 Reagentes básicos",sum(i["nome"] in reagentes_basicos for i in registros))
+st.caption(f"Limite do inventário: {len(registros)}/{LIMITE_REAGENTES} reagentes")
 
 aba_lista,aba_retirada,aba_devolucao,aba_cadastro,aba_historico = st.tabs(["📋 Lista","📤 Retirar","📥 Devolver / repor","➕ Cadastrar","🕘 Histórico"])
 
@@ -156,14 +185,7 @@ with aba_lista:
         with st.form("form_busca_lista", clear_on_submit=False):
             termo = st.text_input("🔎 Buscar pelo nome ou parte do nome", key="busca_lista")
             buscar = st.form_submit_button("🔎 Buscar", use_container_width=True)
-
-        if buscar and termo.strip():
-            resultados = buscar_reagente(termo.strip())
-        elif termo.strip():
-            resultados = buscar_reagente(termo.strip())
-        else:
-            resultados = listar_reagentes()
-
+        resultados = buscar_reagente(termo.strip()) if buscar and termo.strip() else (listar_reagentes() if not termo.strip() else buscar_reagente(termo.strip()))
         if resultados:
             tabela=[]
             for item in resultados:
@@ -185,7 +207,7 @@ with aba_retirada:
             if confirmar:
                 item=next(x for x in listar_reagentes() if x["nome"]==nome); saldo=float(item["quantidade"] or 0)
                 if saldo>=quantidade:
-                    dados=dados_para_edicao(item,saldo-quantidade); atualizar_reagente(item["id"],dados,responsavel_atual,"Retirada"); st.success(f"✅ Retirada realizada. Saldo: {dados['quantidade']} {item.get('unidade') or 'unidade'}.")
+                    dados=dados_para_edicao(item,saldo-quantidade); atualizar_reagente(item["id"],dados,responsavel_atual,"Retirada"); st.success(f"✅ Retirada realizada. Saldo: {dados['quantidade']} {item.get('unidade') or 'unidade'}."); st.rerun()
                 else: st.error(f"⚠️ Estoque insuficiente. Disponível: {saldo:g} {item.get('unidade') or 'unidade'}.")
         else: st.info("🔎 Nenhum reagente encontrado."); st.form_submit_button("📤 Confirmar retirada",disabled=True)
 
@@ -202,23 +224,29 @@ with aba_devolucao:
 
 with aba_cadastro:
     st.subheader("➕ Cadastrar reagente personalizado")
-    with st.form("form_cadastro",clear_on_submit=True):
-        nome_novo=st.text_input("🧪 Nome e fórmula do reagente"); categoria=st.selectbox("🏷️ Categoria",["Solvente","Ácido","Base","Indicador","Sal","Outro"]); quantidade_nova=st.number_input("📏 Quantidade inicial",min_value=0.0,value=2.0,step=0.5); unidade=st.selectbox("📏 Unidade",["mL","g","mg","L","kg","unidade"]); local=st.text_input("📍 Local de armazenamento"); validade=st.date_input("📅 Validade (opcional)",value=None); status=st.selectbox("🧪 Status",["Disponível","Baixo","Vencido","Em uso"]); observacoes=st.text_area("📝 Observações"); cadastrar=st.form_submit_button("Cadastrar reagente")
-        if cadastrar:
-            nome_novo=nome_novo.strip()
-            if not nome_novo: st.error("⚠️ O nome não pode ficar vazio.")
-            elif any(x["nome"].casefold()==nome_novo.casefold() for x in listar_reagentes()): st.warning("⚠️ Esse reagente já está cadastrado.")
-            else:
-                try:
-                    cadastrar_reagente(nome_novo,categoria,quantidade_nova,unidade,local.strip(),validade.isoformat() if validade else "",status,observacoes.strip(),responsavel_atual); st.success("✅ Reagente cadastrado com sucesso."); st.rerun()
-                except sqlite3.IntegrityError: st.error("⚠️ Não foi possível cadastrar: já existe um reagente com esse nome.")
+    if len(registros) >= LIMITE_REAGENTES:
+        st.warning(f"Limite atingido: o inventário aceita até {LIMITE_REAGENTES} reagentes.")
+    else:
+        with st.form("form_cadastro",clear_on_submit=True):
+            nome_novo=st.text_input("🧪 Nome e fórmula do reagente"); categoria=st.selectbox("🏷️ Categoria",["Solvente","Ácido","Base","Indicador","Sal","Outro"]); quantidade_nova=st.number_input("📏 Quantidade inicial",min_value=0.0,value=2.0,step=0.5); unidade=st.selectbox("📏 Unidade",["mL","g","mg","L","kg","unidade"]); local=st.text_input("📍 Local de armazenamento"); validade=st.date_input("📅 Validade (opcional)",value=None); status=st.selectbox("🧪 Status",["Disponível","Baixo","Vencido","Em uso"]); observacoes=st.text_area("📝 Observações"); cadastrar=st.form_submit_button("Cadastrar reagente")
+            if cadastrar:
+                nome_novo=nome_novo.strip()
+                if not nome_novo: st.error("⚠️ O nome não pode ficar vazio.")
+                elif len(listar_reagentes()) >= LIMITE_REAGENTES: st.error(f"⚠️ Limite de {LIMITE_REAGENTES} reagentes atingido.")
+                elif any(x["nome"].casefold()==nome_novo.casefold() for x in listar_reagentes()): st.warning("⚠️ Esse reagente já está cadastrado.")
+                else:
+                    try:
+                        if cadastrar_reagente(nome_novo,categoria,quantidade_nova,unidade,local.strip(),validade.isoformat() if validade else "",status,observacoes.strip(),responsavel_atual):
+                            st.success("✅ Reagente cadastrado com sucesso."); st.rerun()
+                        else: st.error(f"⚠️ Limite de {LIMITE_REAGENTES} reagentes atingido.")
+                    except sqlite3.IntegrityError: st.error("⚠️ Não foi possível cadastrar: já existe um reagente com esse nome.")
     st.divider(); st.subheader("✏️ Editar ou excluir reagente"); atual=listar_reagentes()
     if atual:
         por_nome={x["nome"]:x for x in atual}; selecionado=st.selectbox("🧪 Selecione um reagente",list(por_nome),key="selecionar_edicao"); item=por_nome[selecionado]
         with st.form("form_edicao"):
             nome_editado=st.text_input("Nome",value=item["nome"]); categorias=["Solvente","Ácido","Base","Indicador","Sal","Outro","Geral"]; cat_atual=item.get("categoria") or "Geral"
             if cat_atual not in categorias: categorias.append(cat_atual)
-            categoria_editada=st.selectbox("🏷️ Categoria",categorias,index=categorias.index(cat_atual)); quantidade_editada=st.number_input("📏 Quantidade",min_value=0.0,value=float(item["quantidade"] or 0),step=0.5); unidades=["mL","g","mg","L","kg","unidade"]; un_atual=item.get("unidade") or "unidade"; unidade_editada=st.selectbox("📏 Unidade",unidades,index=unidades.index(un_atual) if un_atual in unidades else 5); local_editado=st.text_input("📍 Local",value=item.get("local") or ""); validade_editada=st.text_input("📅 Validade",value=item.get("validade") or ""); status_ed=st.selectbox("🧪 Status",["Disponível","Baixo","Vencido","Em uso"],index=["Disponível","Baixo","Vencido","Em uso"].index(item.get("status") or "Disponível")); obs_editadas=st.text_area("📝 Observações",value=item.get("observacoes") or ""); salvar=st.form_submit_button("💾 Salvar alterações"); excluir=st.form_submit_button("🗑️ Excluir reagente")
+            categoria_editada=st.selectbox("🏷️ Categoria",categorias,index=categorias.index(cat_atual)); quantidade_editada=st.number_input("📏 Quantidade",min_value=0.0,value=float(item["quantidade"] or 0),step=0.5); unidades=["mL","g","mg","L","kg","unidade"]; un_atual=item.get("unidade") or "unidade"; unidade_editada=st.selectbox("📏 Unidade",unidades,index=unidades.index(un_atual) if un_atual in unidades else 5); local_editado=st.text_input("📍 Local",value=item.get("local") or ""); validade_editada=st.text_input("📅 Validade",value=item.get("validade") or ""); statuses=["Disponível","Baixo","Vencido","Em uso"]; status_atual=item.get("status") or "Disponível"; status_ed=st.selectbox("🧪 Status",statuses,index=statuses.index(status_atual) if status_atual in statuses else 0); obs_editadas=st.text_area("📝 Observações",value=item.get("observacoes") or ""); salvar=st.form_submit_button("💾 Salvar alterações"); excluir=st.form_submit_button("🗑️ Excluir reagente")
             if salvar:
                 if not nome_editado.strip(): st.error("⚠️ O nome não pode ficar vazio.")
                 else:
@@ -228,11 +256,10 @@ with aba_cadastro:
             if excluir: excluir_reagente(item["id"],responsavel_atual); st.success("🗑️ Reagente excluído e registrado no histórico."); st.rerun()
 
 with aba_historico:
-    st.subheader("🕘 Histórico completo de alterações"); eventos=carregar_historico()
+    st.subheader(f"🕘 Histórico de alterações (últimos {LIMITE_HISTORICO} registros)"); eventos=carregar_historico()
     if not eventos: st.info("📭 Ainda não há operações registradas.")
     else:
         filtro=st.text_input("🔎 Filtrar histórico por reagente ou responsável",key="busca_historico"); hist=pd.DataFrame(eventos)
         if filtro.strip(): hist=hist[hist["nome_reagente"].str.contains(filtro.strip(),case=False,na=False)|hist["responsavel"].str.contains(filtro.strip(),case=False,na=False)]
         hist=hist.rename(columns={"data_hora":"Data e hora","responsavel":"Responsável","acao":"Operação","nome_reagente":"Reagente","detalhes":"Detalhes da alteração"})
         st.dataframe(hist[["Data e hora","Responsável","Operação","Reagente","Detalhes da alteração"]],use_container_width=True,hide_index=True)
-
